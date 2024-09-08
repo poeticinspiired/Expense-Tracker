@@ -5,9 +5,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const amountInput = document.getElementById('amount');
     const descriptionInput = document.getElementById('description');
     const typeSelect = document.getElementById('type');
+    const categoryInput = document.getElementById('category');
+    const categoryFilterSelect = document.getElementById('category-filter');
     const expenseChartCtx = document.getElementById('expense-chart').getContext('2d');
 
-    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let transactions = [];
+    let categories = [];
     let expenseChart;
 
     function updateBalance() {
@@ -19,25 +22,26 @@ document.addEventListener('DOMContentLoaded', () => {
         balanceElement.className = balance >= 0 ? 'balance positive' : 'balance negative';
     }
 
-    function renderTransactions() {
+    function renderTransactions(filteredTransactions = transactions) {
         transactionList.innerHTML = '';
-        transactions.forEach((transaction, index) => {
+        filteredTransactions.forEach((transaction) => {
             const li = document.createElement('li');
             li.className = `transaction-item ${transaction.type}`;
             li.innerHTML = `
                 <span>${transaction.description}</span>
                 <span>${transaction.type === 'income' ? '+' : '-'}$${transaction.amount.toFixed(2)}</span>
-                <button class="btn btn-sm btn-danger" onclick="removeTransaction(${index})">Remove</button>
+                <span>${transaction.category}</span>
+                <button class="btn btn-sm btn-danger" onclick="removeTransaction(${transaction.id})">Remove</button>
             `;
             transactionList.appendChild(li);
         });
     }
 
-    function updateChart() {
-        const labels = transactions.map(t => t.description);
-        const data = transactions.map(t => t.amount);
-        const backgroundColors = transactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 99, 132, 0.2)');
-        const borderColors = transactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 1)' : 'rgba(255, 99, 132, 1)');
+    function updateChart(filteredTransactions = transactions) {
+        const labels = filteredTransactions.map(t => t.description);
+        const data = filteredTransactions.map(t => t.amount);
+        const backgroundColors = filteredTransactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 99, 132, 0.2)');
+        const borderColors = filteredTransactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 1)' : 'rgba(255, 99, 132, 1)');
 
         if (expenseChart) {
             expenseChart.destroy();
@@ -72,38 +76,90 @@ document.addEventListener('DOMContentLoaded', () => {
         const amount = parseFloat(amountInput.value);
         const description = descriptionInput.value.trim();
         const type = typeSelect.value;
+        const category = categoryInput.value.trim();
 
-        if (isNaN(amount) || amount <= 0 || description === '') {
-            alert('Please enter a valid amount and description');
+        if (isNaN(amount) || amount <= 0 || description === '' || category === '') {
+            alert('Please enter valid transaction details');
             return;
         }
 
-        const transaction = { amount, description, type };
-        transactions.push(transaction);
-        localStorage.setItem('transactions', JSON.stringify(transactions));
+        const transaction = { amount, description, type, category };
 
-        amountInput.value = '';
-        descriptionInput.value = '';
-        typeSelect.value = 'expense';
-
-        updateBalance();
-        renderTransactions();
-        updateChart();
+        fetch('/api/transactions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(transaction),
+        })
+        .then(response => response.json())
+        .then(data => {
+            transactions.push(data);
+            updateCategories();
+            updateBalance();
+            renderTransactions();
+            updateChart();
+            transactionForm.reset();
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
     }
 
-    window.removeTransaction = function(index) {
-        transactions.splice(index, 1);
-        localStorage.setItem('transactions', JSON.stringify(transactions));
-        updateBalance();
-        renderTransactions();
-        updateChart();
-    };
+    function removeTransaction(id) {
+        fetch(`/api/transactions/${id}`, {
+            method: 'DELETE',
+        })
+        .then(response => {
+            if (response.ok) {
+                transactions = transactions.filter(t => t.id !== id);
+                updateCategories();
+                updateBalance();
+                renderTransactions();
+                updateChart();
+            }
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+    }
+
+    function updateCategories() {
+        categories = [...new Set(transactions.map(t => t.category))];
+        categoryFilterSelect.innerHTML = '<option value="">All Categories</option>';
+        categories.forEach(category => {
+            const option = document.createElement('option');
+            option.value = category;
+            option.textContent = category;
+            categoryFilterSelect.appendChild(option);
+        });
+    }
+
+    function filterTransactions() {
+        const selectedCategory = categoryFilterSelect.value;
+        const filteredTransactions = selectedCategory
+            ? transactions.filter(t => t.category === selectedCategory)
+            : transactions;
+        renderTransactions(filteredTransactions);
+        updateChart(filteredTransactions);
+    }
 
     transactionForm.addEventListener('submit', addTransaction);
+    categoryFilterSelect.addEventListener('change', filterTransactions);
 
-    updateBalance();
-    renderTransactions();
-    updateChart();
+    // Fetch transactions from the server
+    fetch('/api/transactions')
+        .then(response => response.json())
+        .then(data => {
+            transactions = data;
+            updateCategories();
+            updateBalance();
+            renderTransactions();
+            updateChart();
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
 
     // Fetch and display current time from the server
     fetch('/api/current_time')
@@ -112,4 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('current-time').textContent = data.current_time;
         })
         .catch(error => console.error('Error fetching current time:', error));
+
+    window.removeTransaction = removeTransaction;
 });

@@ -19,6 +19,7 @@ login_manager.login_view = 'login'
 
 # Simulating a database with a dictionary
 users = {}
+transactions = {}
 
 class User(UserMixin):
     def __init__(self, id, username, password):
@@ -56,6 +57,7 @@ def register():
         hashed_password = generate_password_hash(password)
         new_user = User(id=username, username=username, password=hashed_password)
         users[username] = new_user
+        transactions[username] = []
         logger.info(f"New user registered: {username}")
         logger.debug(f"Current users after registration: {json.dumps(users, default=lambda o: o.__dict__, indent=2)}")
         flash('Registration successful. Please log in.')
@@ -101,12 +103,40 @@ def logout():
 def get_current_time():
     return jsonify({'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
 
-@app.route('/debug')
-def debug():
-    return jsonify({
-        'users': [{'username': user.username, 'id': user.id} for user in users.values()],
-        'current_user': current_user.username if current_user.is_authenticated else 'Not logged in'
-    })
+@app.route('/api/transactions', methods=['GET', 'POST'])
+@login_required
+def handle_transactions():
+    if request.method == 'GET':
+        return jsonify(transactions.get(current_user.username, []))
+    elif request.method == 'POST':
+        data = request.json
+        transaction = {
+            'id': len(transactions[current_user.username]),
+            'amount': data['amount'],
+            'description': data['description'],
+            'type': data['type'],
+            'category': data['category']
+        }
+        transactions[current_user.username].append(transaction)
+        return jsonify(transaction), 201
+
+@app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
+@login_required
+def delete_transaction(transaction_id):
+    user_transactions = transactions.get(current_user.username, [])
+    for i, transaction in enumerate(user_transactions):
+        if transaction['id'] == transaction_id:
+            del user_transactions[i]
+            return '', 204
+    return jsonify({'error': 'Transaction not found'}), 404
+
+@app.route('/api/categories')
+@login_required
+def get_categories():
+    categories = set()
+    for transaction in transactions.get(current_user.username, []):
+        categories.add(transaction['category'])
+    return jsonify(list(categories))
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

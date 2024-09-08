@@ -40,6 +40,10 @@
                                     <option value="income">Income</option>
                                 </select>
                             </div>
+                            <div class="mb-3">
+                                <label for="category" class="form-label">Category</label>
+                                <input type="text" class="form-control" id="category" required>
+                            </div>
                             <button type="submit" class="btn btn-primary">Add Transaction</button>
                         </form>
                     </div>
@@ -58,6 +62,12 @@
         <div class="card mb-4">
             <div class="card-body">
                 <h5 class="card-title">Transaction History</h5>
+                <div class="mb-3">
+                    <label for="category-filter" class="form-label">Filter by Category</label>
+                    <select class="form-select" id="category-filter">
+                        <option value="">All Categories</option>
+                    </select>
+                </div>
                 <ul id="transaction-list" class="list-unstyled transaction-list"></ul>
             </div>
         </div>
