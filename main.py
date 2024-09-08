@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify, request, send_file
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import json
 import csv
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Simulating a database with a list
 transactions = []
+recurring_transactions = []
 
 @app.route('/')
 def index():
@@ -40,17 +41,24 @@ def handle_transactions():
             'amount': data.get('amount'),
             'description': data.get('description'),
             'type': data.get('type'),
-            'category': data.get('category')
+            'category': data.get('category'),
+            'date': data.get('date', datetime.now().strftime('%Y-%m-%d')),
+            'is_recurring': data.get('is_recurring', False),
+            'recurrence_interval': data.get('recurrence_interval')
         }
         transactions.append(transaction)
+        if transaction['is_recurring']:
+            add_recurring_transaction(transaction)
         return jsonify(transaction), 201
 
 @app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
 def delete_transaction(transaction_id):
-    global transactions
+    global transactions, recurring_transactions
     for i, transaction in enumerate(transactions):
         if transaction['id'] == transaction_id:
-            del transactions[i]
+            deleted_transaction = transactions.pop(i)
+            if deleted_transaction['is_recurring']:
+                remove_recurring_transaction(deleted_transaction)
             return '', 204
     return jsonify({'error': 'Transaction not found'}), 404
 
@@ -63,24 +71,23 @@ def get_categories():
 
 @app.route('/api/export/csv')
 def export_csv():
-    # Create a StringIO object to write CSV data
     csv_output = io.StringIO()
     csv_writer = csv.writer(csv_output)
     
-    # Write header
-    csv_writer.writerow(['ID', 'Amount', 'Description', 'Type', 'Category'])
+    csv_writer.writerow(['ID', 'Amount', 'Description', 'Type', 'Category', 'Date', 'Is Recurring', 'Recurrence Interval'])
     
-    # Write transactions
     for transaction in transactions:
         csv_writer.writerow([
             transaction['id'],
             transaction['amount'],
             transaction['description'],
             transaction['type'],
-            transaction['category']
+            transaction['category'],
+            transaction['date'],
+            transaction['is_recurring'],
+            transaction.get('recurrence_interval', '')
         ])
     
-    # Create a response with CSV data
     output = csv_output.getvalue()
     csv_output.close()
     
@@ -93,27 +100,24 @@ def export_csv():
 
 @app.route('/api/export/pdf')
 def export_pdf():
-    # Create a BytesIO buffer for the PDF
     buffer = io.BytesIO()
-    
-    # Create the PDF object, using the BytesIO buffer as its "file."
     doc = SimpleDocTemplate(buffer, pagesize=letter)
     
-    # Create the table data
-    data = [['ID', 'Amount', 'Description', 'Type', 'Category']]
+    data = [['ID', 'Amount', 'Description', 'Type', 'Category', 'Date', 'Is Recurring', 'Recurrence Interval']]
     for transaction in transactions:
         data.append([
             transaction['id'],
             transaction['amount'],
             transaction['description'],
             transaction['type'],
-            transaction['category']
+            transaction['category'],
+            transaction['date'],
+            'Yes' if transaction['is_recurring'] else 'No',
+            transaction.get('recurrence_interval', '')
         ])
     
-    # Create the table
     table = Table(data)
     
-    # Add style to the table
     style = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -132,12 +136,10 @@ def export_pdf():
     ])
     table.setStyle(style)
     
-    # Add the table to the PDF
     elements = []
     elements.append(table)
     doc.build(elements)
     
-    # Get the value of the BytesIO buffer and create the response
     pdf = buffer.getvalue()
     buffer.close()
     
@@ -147,6 +149,52 @@ def export_pdf():
         as_attachment=True,
         download_name='transactions.pdf'
     )
+
+def add_recurring_transaction(transaction):
+    recurring_transactions.append(transaction)
+
+def remove_recurring_transaction(transaction):
+    global recurring_transactions
+    recurring_transactions = [t for t in recurring_transactions if t['id'] != transaction['id']]
+
+@app.route('/api/process_recurring_transactions', methods=['POST'])
+def process_recurring_transactions():
+    global transactions
+    current_date = datetime.now().date()
+    new_transactions = []
+
+    for recurring_transaction in recurring_transactions:
+        last_occurrence = datetime.strptime(recurring_transaction['date'], '%Y-%m-%d').date()
+        interval = recurring_transaction['recurrence_interval']
+
+        if interval == 'daily':
+            days_to_add = 1
+        elif interval == 'weekly':
+            days_to_add = 7
+        elif interval == 'monthly':
+            days_to_add = 30
+        elif interval == 'yearly':
+            days_to_add = 365
+        else:
+            continue
+
+        next_occurrence = last_occurrence + timedelta(days=days_to_add)
+
+        while next_occurrence <= current_date:
+            new_transaction = recurring_transaction.copy()
+            new_transaction['id'] = len(transactions)
+            new_transaction['date'] = next_occurrence.strftime('%Y-%m-%d')
+            new_transaction['is_recurring'] = False
+            new_transaction.pop('recurrence_interval', None)
+            
+            transactions.append(new_transaction)
+            new_transactions.append(new_transaction)
+            
+            next_occurrence += timedelta(days=days_to_add)
+
+        recurring_transaction['date'] = (next_occurrence - timedelta(days=days_to_add)).strftime('%Y-%m-%d')
+
+    return jsonify(new_transactions), 201
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -15,6 +15,7 @@
             <div class="col-md-12 text-end">
                 <a href="{{ url_for('export_csv') }}" class="btn btn-success">Export CSV</a>
                 <a href="{{ url_for('export_pdf') }}" class="btn btn-primary">Export PDF</a>
+                <button id="process-recurring" class="btn btn-warning">Process Recurring Transactions</button>
             </div>
         </div>
         <div class="row">
@@ -41,6 +42,23 @@
                             <div class="mb-3">
                                 <label for="category" class="form-label">Category</label>
                                 <input type="text" class="form-control" id="category" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="date" class="form-label">Date</label>
+                                <input type="date" class="form-control" id="date" required>
+                            </div>
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="is-recurring">
+                                <label class="form-check-label" for="is-recurring">Recurring Transaction</label>
+                            </div>
+                            <div class="mb-3" id="recurrence-interval-container" style="display: none;">
+                                <label for="recurrence-interval" class="form-label">Recurrence Interval</label>
+                                <select class="form-select" id="recurrence-interval">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="yearly">Yearly</option>
+                                </select>
                             </div>
                             <button type="submit" class="btn btn-primary">Add Transaction</button>
                         </form>

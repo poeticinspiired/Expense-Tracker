@@ -6,8 +6,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const descriptionInput = document.getElementById('description');
     const typeSelect = document.getElementById('type');
     const categoryInput = document.getElementById('category');
+    const dateInput = document.getElementById('date');
+    const isRecurringCheckbox = document.getElementById('is-recurring');
+    const recurrenceIntervalContainer = document.getElementById('recurrence-interval-container');
+    const recurrenceIntervalSelect = document.getElementById('recurrence-interval');
     const categoryFilterSelect = document.getElementById('category-filter');
     const expenseChartCtx = document.getElementById('expense-chart').getContext('2d');
+    const processRecurringButton = document.getElementById('process-recurring');
 
     let transactions = [];
     let categories = [];
@@ -31,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <span>${transaction.description}</span>
                 <span>${transaction.type === 'income' ? '+' : '-'}$${transaction.amount.toFixed(2)}</span>
                 <span>${transaction.category}</span>
+                <span>${transaction.date}</span>
+                <span>${transaction.is_recurring ? 'Recurring' : ''}</span>
                 <button class="btn btn-sm btn-danger" onclick="removeTransaction(${transaction.id})">Remove</button>
             `;
             transactionList.appendChild(li);
@@ -77,13 +84,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const description = descriptionInput.value.trim();
         const type = typeSelect.value;
         const category = categoryInput.value.trim();
+        const date = dateInput.value;
+        const is_recurring = isRecurringCheckbox.checked;
+        const recurrence_interval = is_recurring ? recurrenceIntervalSelect.value : null;
 
-        if (isNaN(amount) || amount <= 0 || description === '' || category === '') {
+        if (isNaN(amount) || amount <= 0 || description === '' || category === '' || date === '') {
             alert('Please enter valid transaction details');
             return;
         }
 
-        const transaction = { amount, description, type, category };
+        const transaction = { amount, description, type, category, date, is_recurring, recurrence_interval };
 
         fetch('/api/transactions', {
             method: 'POST',
@@ -100,6 +110,8 @@ document.addEventListener('DOMContentLoaded', () => {
             renderTransactions();
             updateChart();
             transactionForm.reset();
+            dateInput.value = new Date().toISOString().split('T')[0];
+            recurrenceIntervalContainer.style.display = 'none';
         })
         .catch((error) => {
             console.error('Error:', error);
@@ -144,8 +156,30 @@ document.addEventListener('DOMContentLoaded', () => {
         updateChart(filteredTransactions);
     }
 
+    function processRecurringTransactions() {
+        fetch('/api/process_recurring_transactions', {
+            method: 'POST',
+        })
+        .then(response => response.json())
+        .then(data => {
+            transactions = transactions.concat(data);
+            updateCategories();
+            updateBalance();
+            renderTransactions();
+            updateChart();
+        })
+        .catch((error) => {
+            console.error('Error:', error);
+        });
+    }
+
     transactionForm.addEventListener('submit', addTransaction);
     categoryFilterSelect.addEventListener('change', filterTransactions);
+    processRecurringButton.addEventListener('click', processRecurringTransactions);
+
+    isRecurringCheckbox.addEventListener('change', () => {
+        recurrenceIntervalContainer.style.display = isRecurringCheckbox.checked ? 'block' : 'none';
+    });
 
     // Fetch transactions from the server
     fetch('/api/transactions')
@@ -168,6 +202,9 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('current-time').textContent = data.current_time;
         })
         .catch(error => console.error('Error fetching current time:', error));
+
+    // Set default date to today
+    dateInput.value = new Date().toISOString().split('T')[0];
 
     window.removeTransaction = removeTransaction;
 });
