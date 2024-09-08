@@ -12,11 +12,9 @@
     <div class="container">
         <h1 class="text-center mb-4">Expense Tracker</h1>
         <div class="row mb-3">
-            <div class="col-md-6">
-                <p>Welcome, {{ current_user.username }}!</p>
-            </div>
-            <div class="col-md-6 text-end">
-                <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+            <div class="col-md-12 text-end">
+                <a href="{{ url_for('export_csv') }}" class="btn btn-success">Export CSV</a>
+                <a href="{{ url_for('export_pdf') }}" class="btn btn-primary">Export PDF</a>
             </div>
         </div>
         <div class="row">

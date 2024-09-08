@@ -1,142 +1,152 @@
-from flask import Flask, render_template, jsonify, request, redirect, url_for, flash
+from flask import Flask, render_template, jsonify, request, send_file
 from datetime import datetime
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from werkzeug.security import generate_password_hash, check_password_hash
-from urllib.parse import urlparse, urljoin
 import logging
 import json
+import csv
+import io
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your_secret_key'  # Change this to a random secret key
 
 # Set up logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
-
-# Simulating a database with a dictionary
-users = {}
-transactions = {}
-
-class User(UserMixin):
-    def __init__(self, id, username, password):
-        self.id = id
-        self.username = username
-        self.password = password
-
-@login_manager.user_loader
-def load_user(user_id):
-    logger.info(f"Loading user: {user_id}")
-    user = users.get(user_id)
-    if user:
-        logger.info(f"User {user_id} loaded successfully")
-    else:
-        logger.warning(f"User {user_id} not found")
-    return user
+# Simulating a database with a list
+transactions = []
 
 @app.route('/')
-@login_required
 def index():
-    logger.info(f"Accessing index page. Current user: {current_user.username}")
+    logger.debug("Accessing index page")
     return render_template('index.html')
-
-@app.route('/register', methods=['GET', 'POST'])
-def register():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        logger.info(f"Attempting to register user: {username}")
-        logger.debug(f"Current users before registration: {json.dumps(users, default=lambda o: o.__dict__, indent=2)}")
-        if username in users:
-            logger.warning(f"Registration failed: Username {username} already exists")
-            flash('Username already exists')
-            return redirect(url_for('register'))
-        hashed_password = generate_password_hash(password)
-        new_user = User(id=username, username=username, password=hashed_password)
-        users[username] = new_user
-        transactions[username] = []
-        logger.info(f"New user registered: {username}")
-        logger.debug(f"Current users after registration: {json.dumps(users, default=lambda o: o.__dict__, indent=2)}")
-        flash('Registration successful. Please log in.')
-        return redirect(url_for('login'))
-    return render_template('register.html')
-
-def is_safe_url(target):
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    logger.info("Accessing login route")
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        logger.info(f"Login attempt for user: {username}")
-        logger.debug(f"Current users: {json.dumps(users, default=lambda o: o.__dict__, indent=2)}")
-        user = users.get(username)
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            logger.info(f"User {username} logged in successfully")
-            next_page = request.args.get('next')
-            logger.info(f"Next page requested: {next_page}")
-            if not next_page or not is_safe_url(next_page):
-                next_page = url_for('index')
-            logger.info(f"Redirecting to: {next_page}")
-            return redirect(next_page)
-        else:
-            logger.warning(f"Failed login attempt for user {username}")
-            flash('Invalid username or password')
-    return render_template('login.html')
-
-@app.route('/logout')
-@login_required
-def logout():
-    logger.info(f"User {current_user.username} logged out")
-    logout_user()
-    return redirect(url_for('login'))
 
 @app.route('/api/current_time')
 def get_current_time():
     return jsonify({'current_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
 
 @app.route('/api/transactions', methods=['GET', 'POST'])
-@login_required
 def handle_transactions():
+    global transactions
     if request.method == 'GET':
-        return jsonify(transactions.get(current_user.username, []))
+        return jsonify(transactions)
     elif request.method == 'POST':
         data = request.json
+        if data is None:
+            return jsonify({'error': 'Invalid JSON data'}), 400
         transaction = {
-            'id': len(transactions[current_user.username]),
-            'amount': data['amount'],
-            'description': data['description'],
-            'type': data['type'],
-            'category': data['category']
+            'id': len(transactions),
+            'amount': data.get('amount'),
+            'description': data.get('description'),
+            'type': data.get('type'),
+            'category': data.get('category')
         }
-        transactions[current_user.username].append(transaction)
+        transactions.append(transaction)
         return jsonify(transaction), 201
 
 @app.route('/api/transactions/<int:transaction_id>', methods=['DELETE'])
-@login_required
 def delete_transaction(transaction_id):
-    user_transactions = transactions.get(current_user.username, [])
-    for i, transaction in enumerate(user_transactions):
+    global transactions
+    for i, transaction in enumerate(transactions):
         if transaction['id'] == transaction_id:
-            del user_transactions[i]
+            del transactions[i]
             return '', 204
     return jsonify({'error': 'Transaction not found'}), 404
 
 @app.route('/api/categories')
-@login_required
 def get_categories():
     categories = set()
-    for transaction in transactions.get(current_user.username, []):
+    for transaction in transactions:
         categories.add(transaction['category'])
     return jsonify(list(categories))
+
+@app.route('/api/export/csv')
+def export_csv():
+    # Create a StringIO object to write CSV data
+    csv_output = io.StringIO()
+    csv_writer = csv.writer(csv_output)
+    
+    # Write header
+    csv_writer.writerow(['ID', 'Amount', 'Description', 'Type', 'Category'])
+    
+    # Write transactions
+    for transaction in transactions:
+        csv_writer.writerow([
+            transaction['id'],
+            transaction['amount'],
+            transaction['description'],
+            transaction['type'],
+            transaction['category']
+        ])
+    
+    # Create a response with CSV data
+    output = csv_output.getvalue()
+    csv_output.close()
+    
+    return send_file(
+        io.BytesIO(output.encode()),
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name='transactions.csv'
+    )
+
+@app.route('/api/export/pdf')
+def export_pdf():
+    # Create a BytesIO buffer for the PDF
+    buffer = io.BytesIO()
+    
+    # Create the PDF object, using the BytesIO buffer as its "file."
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    
+    # Create the table data
+    data = [['ID', 'Amount', 'Description', 'Type', 'Category']]
+    for transaction in transactions:
+        data.append([
+            transaction['id'],
+            transaction['amount'],
+            transaction['description'],
+            transaction['type'],
+            transaction['category']
+        ])
+    
+    # Create the table
+    table = Table(data)
+    
+    # Add style to the table
+    style = TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 14),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 12),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ])
+    table.setStyle(style)
+    
+    # Add the table to the PDF
+    elements = []
+    elements.append(table)
+    doc.build(elements)
+    
+    # Get the value of the BytesIO buffer and create the response
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    return send_file(
+        io.BytesIO(pdf),
+        mimetype='application/pdf',
+        as_attachment=True,
+        download_name='transactions.pdf'
+    )
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
