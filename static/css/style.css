@@ -45,3 +45,8 @@ body {
 .negative {
     color: #dc3545;
 }
+
+#expense-chart {
+    width: 100%;
+    height: 300px;
+}

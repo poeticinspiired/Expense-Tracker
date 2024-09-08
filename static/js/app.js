@@ -5,8 +5,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const amountInput = document.getElementById('amount');
     const descriptionInput = document.getElementById('description');
     const typeSelect = document.getElementById('type');
+    const expenseChartCtx = document.getElementById('expense-chart').getContext('2d');
 
     let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+    let expenseChart;
 
     function updateBalance() {
         const balance = transactions.reduce((acc, transaction) => {
@@ -31,6 +33,40 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function updateChart() {
+        const labels = transactions.map(t => t.description);
+        const data = transactions.map(t => t.amount);
+        const backgroundColors = transactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 0.2)' : 'rgba(255, 99, 132, 0.2)');
+        const borderColors = transactions.map(t => t.type === 'income' ? 'rgba(75, 192, 192, 1)' : 'rgba(255, 99, 132, 1)');
+
+        if (expenseChart) {
+            expenseChart.destroy();
+        }
+
+        expenseChart = new Chart(expenseChartCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Transaction Amount',
+                    data: data,
+                    backgroundColor: backgroundColors,
+                    borderColor: borderColors,
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                },
+                responsive: true,
+                maintainAspectRatio: false
+            }
+        });
+    }
+
     function addTransaction(e) {
         e.preventDefault();
         const amount = parseFloat(amountInput.value);
@@ -52,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateBalance();
         renderTransactions();
+        updateChart();
     }
 
     window.removeTransaction = function(index) {
@@ -59,12 +96,14 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('transactions', JSON.stringify(transactions));
         updateBalance();
         renderTransactions();
+        updateChart();
     };
 
     transactionForm.addEventListener('submit', addTransaction);
 
     updateBalance();
     renderTransactions();
+    updateChart();
 
     // Fetch and display current time from the server
     fetch('/api/current_time')
