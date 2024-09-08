@@ -10,6 +10,14 @@
 <body>
     <div class="container">
         <h1 class="text-center mb-4">Expense Tracker</h1>
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <p>Welcome, {{ current_user.username }}!</p>
+            </div>
+            <div class="col-md-6 text-end">
+                <a href="{{ url_for('logout') }}" class="btn btn-secondary">Logout</a>
+            </div>
+        </div>
         <div class="row">
             <div class="col-md-6 mb-4">
                 <div class="card">
